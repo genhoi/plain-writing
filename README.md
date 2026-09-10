@@ -76,7 +76,7 @@ install/print-skill.sh
 ## Check a text
 
 Python 3.11 or newer, standard library only. A file or stdin in; one line per finding out, with the
-line number and the rule name. Exit code 1 when there are findings.
+line number and the rule name. Exit code 1 when there are findings, 2 when a file cannot be read.
 
 ```bash
 python -m lint --kind task description.md
@@ -99,15 +99,18 @@ Markdown and Jira markup are both understood: `## Heading` and `h2. Heading`, `1
 |---|---|---|
 | `sections` | Headings "Не входит", "Что осталось за бортом", "Что не сделано", "Out of scope" and the like | `lint/rules.py` |
 | `jargon` | Calques and jargon, each with a replacement | `lint/jargon.txt` |
-| `codes` | Tracker keys like `NP-12` (a project prefix and a number), MR numbers, branch names next to the word "ветка" or "branch", with no explanation in the same paragraph | `lint/codes.txt` |
+| `codes` | Tracker keys like `NP-12` (a project prefix and a number), MR numbers, branch names next to the word "ветка" or "branch", with no explanation in the same paragraph. Standards such as UTF-8 or SHA-256 are not codes | `lint/codes.txt` for codes, `lint/rules.py` for branches |
 | `self-praise` | "минимальный", "аккуратно", "честно", "очень полезно" and the like | `lint/self-praise.txt` |
 | `length` | A sentence over 35 words, a paragraph over 8 sentences | `lint/rules.py` |
 | `task-form` | With `--kind task`: sections "Проблема", "Что сделать", "Как проверить"; a numbered list under "Что сделать" where every item names a class, table or method in backticks | `lint/rules.py` |
-| `mr-form` | With `--kind mr`: sections "Зачем", "Что изменилось", "Проверки" | `lint/rules.py` |
+| `mr-form` | With `--kind mr`: sections "Зачем", "Что изменилось", "Проверки" (or "Как проверено") | `lint/rules.py` |
 
-The word lists are one entry per line, a replacement after a tab. An entry matches the word and up
-to three letters of ending, so `минимальн` finds "минимальный" and "минимальные". A code is
-explained when it is followed by a bracket, a colon, a dash, "это" or "то есть".
+The word lists are one entry per line: the word, then a replacement after a tab, then an optional
+list of words that cancel the match when they follow it. That list is why "минимальная сумма" is
+not self-praise. An entry matches the word and up to three letters of ending, so `минимальн` finds
+"минимальный" and "минимальные". A word in quotes is a mention, not a use, and is skipped. A code is
+explained when it is followed by a bracket, a colon, a dash, "это" or "то есть". Code blocks, HTML
+lines and Jira `{code}` blocks are not checked.
 
 **What the lint does not do.** It does not check whether a statement about the system is true, and
 it does not find made-up terms. Both stay with the person publishing the text; the rule is in
