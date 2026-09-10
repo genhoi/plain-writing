@@ -1,0 +1,13 @@
+[project]
+name = "plain-writing"
+version = "0.1.0"
+description = "Правила текстов для людей: скилл для агентов и проверка текста скриптом"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.optional-dependencies]
+test = ["pytest"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
