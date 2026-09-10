@@ -2,7 +2,7 @@
 
 set -eu
 
-REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 SKILL_DIR="$REPO/skill"
 SKILL_FILE="$SKILL_DIR/SKILL.md"
 
@@ -27,20 +27,40 @@ ensure_line() {
 link_skill() {
   local target="$1/plain-writing" mode="${2:-}"
   mkdir -p "$1"
-  if [ -L "$target" ] && [ "$(readlink -f "$target")" = "$SKILL_DIR" ]; then
-    echo "уже есть: $target -> $SKILL_DIR"
-    return 0
+  local target_dir; target_dir="$(cd "$1" && pwd -P)"
+  case "$SKILL_DIR/" in
+    "$target_dir/plain-writing/"*)
+      echo "цель $target — это сам репозиторий или каталог внутри него, ставить некуда." >&2
+      return 1 ;;
+  esac
+  if [ -L "$target" ] && [ ! -e "$target" ]; then
+    rm "$target"
+    echo "убрана битая ссылка: $target"
   fi
-  if [ -e "$target" ] && [ "$mode" != "--copy" ]; then
-    echo "есть свой $target. Уберите его или запустите с --copy, чтобы заменить копией." >&2
-    return 1
+  local ours=""
+  if [ -e "$target" ] && [ "$target" -ef "$SKILL_DIR" ]; then
+    ours="link"
+  elif [ -d "$target" ] && [ ! -L "$target" ] && diff -rq "$SKILL_DIR" "$target" >/dev/null 2>&1; then
+    ours="copy"
   fi
-  if [ "$mode" = "--copy" ]; then
-    rm -rf "$target"
-    cp -r "$SKILL_DIR" "$target"
-    echo "скопировано: $target"
-  else
+  if [ "$mode" != "--copy" ]; then
+    case "$ours" in
+      link) echo "уже есть: $target -> $SKILL_DIR"; return 0 ;;
+      copy) echo "уже есть: копия в $target"; return 0 ;;
+    esac
+    if [ -e "$target" ]; then
+      echo "есть свой $target. Уберите его или запустите с --copy, чтобы заменить копией." >&2
+      return 1
+    fi
     ln -s "$SKILL_DIR" "$target"
     echo "ссылка: $target -> $SKILL_DIR"
+    return 0
   fi
+  if [ "$ours" = "copy" ]; then
+    echo "уже есть: копия в $target"
+    return 0
+  fi
+  rm -rf "$target"
+  cp -R "$SKILL_DIR" "$target"
+  echo "скопировано: $target"
 }
