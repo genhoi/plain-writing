@@ -1,0 +1,33 @@
+name: ci
+
+on: [push, pull_request]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install pytest
+      - run: pytest -q
+      - name: Примеры «после» проходят проверку
+        run: |
+          python -m lint --kind task skill/reference/task-after.md
+          python -m lint --kind mr skill/reference/mr-after.md
+      - name: Примеры «до» дают замечания
+        run: |
+          ! python -m lint --kind task skill/reference/task-before.md
+          ! python -m lint --kind mr skill/reference/mr-before.md
+      - name: Тексты репозитория проходят проверку
+        run: python -m lint README.md README.ru.md
+      - name: Скрипты подключения повторяемы
+        run: |
+          export HOME="$RUNNER_TEMP/home"; mkdir -p "$HOME"
+          install/claude-code.sh && install/claude-code.sh
+          install/codex.sh && install/codex.sh
+          install/skills-dir.sh "$HOME/.agents/skills" && install/skills-dir.sh "$HOME/.agents/skills"
+          test "$(grep -c plain-writing "$HOME/.claude/CLAUDE.md")" = 1
+          test "$(grep -c plain-writing "$HOME/.codex/AGENTS.md")" = 1
+          install/print-skill.sh | head -1 | grep -q '^# '

@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 200" width="900" height="200" role="img" aria-label="The agent writes by SKILL.md, the lint checks seven rules, a person checks facts and terms, then the text is published">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#8a97a6"/>
+    </marker>
+  </defs>
+  <style>
+    .b { fill: #ffffff; stroke: #b9c3ce; stroke-width: 1.5; rx: 6; }
+    .ba { fill: #fdf1ee; stroke: #e5674f; stroke-width: 1.8; rx: 6; }
+    .tb { fill: #1b2a41; font: 600 15px ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; text-anchor: middle; }
+    .ts { fill: #5c6b7c; font: 12.5px ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; text-anchor: middle; }
+    .l { stroke: #8a97a6; stroke-width: 1.6; fill: none; marker-end: url(#a); }
+  </style>
+  <rect width="900" height="200" fill="none"/>
+
+  <rect class="b" x="20" y="60" width="180" height="80"/>
+  <text class="tb" x="110" y="92">agent</text>
+  <text class="ts" x="110" y="112">writes by SKILL.md</text>
+  <text class="ts" x="110" y="128">Claude · Codex · grok · any</text>
+
+  <path class="l" d="M202 100 H230"/>
+
+  <rect class="ba" x="234" y="60" width="250" height="80"/>
+  <text class="tb" x="359" y="92">lint</text>
+  <text class="ts" x="359" y="112">seven checkable rules</text>
+  <text class="ts" x="359" y="128">sections · jargon · codes · length · form</text>
+
+  <path class="l" d="M486 100 H516"/>
+
+  <rect class="b" x="520" y="60" width="190" height="80"/>
+  <text class="tb" x="615" y="92">person</text>
+  <text class="ts" x="615" y="112">facts against the code</text>
+  <text class="ts" x="615" y="128">no invented terms</text>
+
+  <path class="l" d="M712 100 H742"/>
+
+  <rect class="b" x="746" y="60" width="140" height="80"/>
+  <text class="tb" x="816" y="92">published</text>
+  <text class="ts" x="816" y="112">task · MR · review</text>
+  <text class="ts" x="816" y="128">works without the chat</text>
+</svg>
