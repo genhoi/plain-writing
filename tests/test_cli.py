@@ -39,3 +39,16 @@ def test_several_files(reference):
     assert result.returncode == 1
     assert "mr-before.md:" in result.stdout
     assert "task-after.md:" not in result.stdout
+
+
+def test_missing_file_exits_two():
+    result = run("nosuch.md")
+    assert result.returncode == 2
+    assert "nosuch.md" in result.stderr
+    assert "Traceback" not in result.stderr
+
+
+def test_bom_file(tmp_path):
+    path = tmp_path / "task.md"
+    path.write_text("\ufeff## Проблема\n\nТекст.\n\n## Что сделать\n\n1. `X`: y.\n\n## Как проверить\n\n- тест.\n", encoding="utf-8")
+    assert run("--kind", "task", str(path)).returncode == 0

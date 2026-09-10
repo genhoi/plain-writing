@@ -11,6 +11,7 @@ from .document import (
     normalize_title,
     split_sentences,
     strip_code,
+    strip_links,
     strip_quoted,
     strip_urls,
 )
@@ -35,8 +36,9 @@ FORBIDDEN_SECTIONS = (
     "left out",
     "what's left",
 )
-TASK_SECTIONS = ("проблема", "что сделать", "как проверить")
-MR_SECTIONS = ("зачем", "что изменилось", "проверки")
+# Обязательные разделы: для каждого — имя в сообщении и допустимые заголовки.
+TASK_SECTIONS = (("Проблема", ("проблема",)), ("Что сделать", ("что сделать",)), ("Как проверить", ("как проверить",)))
+MR_SECTIONS = (("Зачем", ("зачем",)), ("Что изменилось", ("что изменилось",)), ("Проверки", ("проверки", "как проверено", "как проверял", "как проверить")))
 
 
 @dataclass(frozen=True)
@@ -46,34 +48,66 @@ class Finding:
     message: str
 
 
-def read_list(name: str) -> list[tuple[str, str]]:
-    """Строки файла из каталога `lint/` без комментариев: (слово, замена или пустая строка)."""
+@dataclass(frozen=True)
+class Entry:
+    """Строка списка слов: слово, замена и слова, перед которыми оно не считается нарушением."""
+
+    word: str
+    replacement: str = ""
+    exceptions: tuple[str, ...] = ()
+
+
+def read_list(name: str) -> list[Entry]:
+    """Строки файла из каталога `lint/` без комментариев. Поля разделены табуляцией."""
     result = []
     for raw in (DATA_DIR / name).read_text(encoding="utf-8").splitlines():
         if not raw.strip() or raw.lstrip().startswith("#"):
             continue
-        word, _, replacement = raw.partition("\t")
-        result.append((word.strip(), replacement.strip()))
+        fields = [f.strip() for f in raw.split("\t")]
+        word = fields[0]
+        replacement = fields[1] if len(fields) > 1 else ""
+        exceptions = tuple(w.strip() for w in fields[2].split(",") if w.strip()) if len(fields) > 2 else ()
+        result.append(Entry(word, replacement, exceptions))
     return result
 
 
-def word_pattern(word: str) -> re.Pattern[str]:
+def word_pattern(entry: Entry) -> re.Pattern[str]:
     """Слово из списка с окончанием до трёх букв: «минимальн» найдёт «минимальный»."""
-    return re.compile(r"(?<![\w-])" + re.escape(word) + r"[a-zа-яё]{0,3}(?![\w-])", re.IGNORECASE)
+    pattern = r"(?<![\w-])" + re.escape(entry.word) + r"[a-zа-яё]{0,3}(?![\w-])"
+    if entry.exceptions:
+        pattern += r"(?!\s+(?:" + "|".join(re.escape(w) for w in entry.exceptions) + r"))"
+    return re.compile(pattern, re.IGNORECASE)
 
 
-def _find_words(doc: Document, words: list[tuple[str, str]], rule: str, label: str) -> list[Finding]:
+def _line_of_offset(paragraph: Paragraph, offset: int) -> int:
+    """Строка абзаца, на которую попадает смещение в склеенном тексте."""
+    position = 0
+    for index, line in enumerate(paragraph.lines):
+        position += len(line.strip()) + 1
+        if offset < position:
+            return paragraph.line + index
+    return paragraph.line + len(paragraph.lines) - 1
+
+
+def _text_units(doc: Document) -> list[Paragraph]:
+    """Абзацы и заголовки как единицы текста для правил о словах."""
+    units = list(doc.paragraphs)
+    units.extend(Paragraph(line, [title]) for line, title in doc.headings)
+    return sorted(units, key=lambda p: p.line)
+
+
+def _find_words(doc: Document, entries: list[Entry], rule: str, label: str) -> list[Finding]:
     findings = []
-    for number, line in doc.prose_lines():
-        clean = strip_quoted(strip_code(line))
+    for unit in _text_units(doc):
+        clean = strip_quoted(strip_code(unit.text))
         taken: list[tuple[int, int]] = []
-        for word, replacement in sorted(words, key=lambda pair: -len(pair[0])):
-            m = word_pattern(word).search(clean)
-            if not m or any(m.start() < end and start < m.end() for start, end in taken):
-                continue
-            taken.append(m.span())
-            hint = f", замена: {replacement}" if replacement else ""
-            findings.append(Finding(number, rule, f"«{m.group(0)}»: {label}{hint}"))
+        for entry in sorted(entries, key=lambda e: -len(e.word)):
+            for m in word_pattern(entry).finditer(clean):
+                if any(m.start() < end and start < m.end() for start, end in taken):
+                    continue
+                taken.append(m.span())
+                hint = f", замена: {entry.replacement}" if entry.replacement else ""
+                findings.append(Finding(_line_of_offset(unit, m.start()), rule, f"«{m.group(0)}»: {label}{hint}"))
     return findings
 
 
@@ -81,8 +115,7 @@ def check_sections(doc: Document) -> list[Finding]:
     """Разделы, о которых читатель не спрашивал: «Не входит» и подобные."""
     findings = []
     for line, title in doc.headings:
-        name = normalize_title(title)
-        if any(name.startswith(bad) for bad in FORBIDDEN_SECTIONS):
+        if normalize_title(title) in FORBIDDEN_SECTIONS:
             findings.append(Finding(line, "sections", f"раздел «{title.strip()}»: убрать. Реальное ограничение идёт одним абзацем с причиной"))
     return findings
 
@@ -110,33 +143,37 @@ def _explained(text: str, end: int) -> bool:
 
 
 def _code_patterns() -> list[re.Pattern[str]]:
-    return [re.compile(word) for word, _ in read_list("codes.txt")]
+    return [re.compile(entry.word) for entry in read_list("codes.txt")]
 
 
 def check_codes(doc: Document) -> list[Finding]:
     """Внутренние коды и ветки без расшифровки в том же абзаце."""
     findings = []
     patterns = _code_patterns()
-    for paragraph in doc.paragraphs:
-        text = strip_urls(paragraph.text)
-        explained_codes = set()
-        found: list[tuple[str, str]] = []
-        for pattern in patterns:
-            for m in pattern.finditer(text):
-                if _explained(text, m.end()):
-                    explained_codes.add(m.group(0))
-                else:
-                    found.append((m.group(0), "внутренний код без расшифровки: объяснить в том же абзаце или убрать"))
+    for unit in _text_units(doc):
+        text = strip_urls(strip_links(unit.text))
+        explained_spans: list[tuple[int, int]] = []
+        found: list[tuple[int, str, str]] = []
         for m in _BRANCH.finditer(text):
             name = m.group(1) or m.group(2)
-            if not _explained(text, m.end()):
-                found.append((name, "ветка: читатель не знает, что в ней. Сказать, что это, или убрать"))
+            if _explained(text, m.end()):
+                explained_spans.append(m.span())
+            else:
+                found.append((m.start(), name, "ветка: читатель не знает, что в ней. Сказать, что это, или убрать"))
+        explained_codes = set()
+        for pattern in patterns:
+            for m in pattern.finditer(text):
+                inside_branch = any(start <= m.start() and m.end() <= end for start, end in explained_spans)
+                if inside_branch or _explained(text, m.end()):
+                    explained_codes.add(m.group(0))
+                else:
+                    found.append((m.start(), m.group(0), "внутренний код без расшифровки: объяснить в том же абзаце или убрать"))
         seen = set()
-        for code, message in found:
+        for offset, code, message in sorted(found):
             if code in explained_codes or code in seen:
                 continue
             seen.add(code)
-            findings.append(Finding(paragraph.line, "codes", f"«{code}»: {message}"))
+            findings.append(Finding(_line_of_offset(unit, offset), "codes", f"«{code}»: {message}"))
     return findings
 
 
@@ -151,7 +188,7 @@ def _line_of_sentence(paragraph: Paragraph, index: int) -> int:
 
 
 def check_length(doc: Document) -> list[Finding]:
-    """Предложение длиннее 35 слов, абзац длиннее 8 предложений."""
+    """Предложение длиннее 35 слов, абзац длиннее 8 предложений. Строка таблицы абзацем не считается."""
     findings = []
     for paragraph in doc.paragraphs:
         sentences = split_sentences(paragraph.text)
@@ -159,7 +196,7 @@ def check_length(doc: Document) -> list[Finding]:
             words = count_words(sentence)
             if words > MAX_SENTENCE_WORDS:
                 findings.append(Finding(_line_of_sentence(paragraph, index), "length", f"предложение из {words} слов, предел {MAX_SENTENCE_WORDS}: разбить"))
-        if len(sentences) > MAX_PARAGRAPH_SENTENCES:
+        if len(sentences) > MAX_PARAGRAPH_SENTENCES and not paragraph.table:
             findings.append(Finding(paragraph.line, "length", f"абзац из {len(sentences)} предложений, предел {MAX_PARAGRAPH_SENTENCES}: разбить"))
     return findings
 
@@ -167,12 +204,12 @@ def check_length(doc: Document) -> list[Finding]:
 _CODE_NAME = re.compile(r"`[^`]+`|\{\{[^}]+\}\}")
 
 
-def _required_sections(doc: Document, required: tuple[str, ...], rule: str, kind: str) -> list[Finding]:
+def _required_sections(doc: Document, required, rule: str, kind: str) -> list[Finding]:
     findings = []
     present = [normalize_title(title) for _, title in doc.headings]
-    for name in required:
-        if not any(title.startswith(name) for title in present):
-            findings.append(Finding(1, rule, f"нет раздела «{name.capitalize()}», он обязателен для {kind}"))
+    for name, variants in required:
+        if not any(title.startswith(v) for title in present for v in variants):
+            findings.append(Finding(1, rule, f"нет раздела «{name}», он обязателен для {kind}"))
     return findings
 
 

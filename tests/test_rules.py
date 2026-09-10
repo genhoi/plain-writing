@@ -25,10 +25,15 @@ def test_sections_forbidden_heading(heading):
     assert findings[0].line == 1
 
 
-@pytest.mark.parametrize("heading", ["## Проблема", "h2. Ограничение", "**Как проверить**", "## Не входит в стоимость доставки ничего лишнего"])
+@pytest.mark.parametrize("heading", ["## Проблема", "h2. Ограничение", "**Как проверить**", "## Не входит в стоимость доставки", "## Не входит НДС в эту сумму"])
 def test_sections_allowed_heading(heading):
     text = f"{heading}\n\nПосле оплаты строка закрыта.\n"
-    assert "sections" not in rules(check(text)) or heading.endswith("лишнего")
+    assert "sections" not in rules(check(text))
+
+
+def test_sections_setext_heading():
+    findings = check("Не входит\n---\n\nПеренос старых заказов.\n")
+    assert [(f.rule, f.line) for f in findings] == [("sections", 1)]
 
 
 def test_sections_mention_in_prose_is_fine():
@@ -37,11 +42,21 @@ def test_sections_mention_in_prose_is_fine():
 
 # 2. Жаргон из lint/jargon.txt.
 
-@pytest.mark.parametrize("word,replacement", read_list("jargon.txt"))
-def test_jargon_each_entry_triggers(word, replacement):
-    findings = check(f"Здесь {word} и больше ничего.\n")
+@pytest.mark.parametrize("entry", read_list("jargon.txt"), ids=lambda e: e.word)
+def test_jargon_each_entry_triggers(entry):
+    findings = check(f"Здесь {entry.word} и больше ничего.\n")
     assert [f.rule for f in findings] == ["jargon"]
-    assert replacement in findings[0].message
+    assert entry.replacement in findings[0].message
+
+
+def test_jargon_repeated_word_reported_twice():
+    findings = check("Сначала спайк на день, потом второй спайк.\n")
+    assert [f.rule for f in findings] == ["jargon", "jargon"]
+
+
+def test_jargon_phrase_across_wrapped_lines():
+    assert "self-praise" in rules(check("Изменение очень\nполезно всем.\n"))
+    assert check("Слово «минимальный\nфикс» заменить.\n") == []
 
 
 def test_jargon_matches_word_forms():
@@ -84,7 +99,26 @@ def test_codes_mr_number():
 
 
 def test_codes_patterns_come_from_file():
-    assert [w for w, _ in read_list("codes.txt")], "lint/codes.txt пуст"
+    assert [e.word for e in read_list("codes.txt")], "lint/codes.txt пуст"
+
+
+def test_codes_standards_are_not_codes():
+    text = "Кодировка UTF-8, хеш SHA-256, дата в ISO-8601, ключ AES-256, протокол TLS-1.3.\n"
+    assert check(text) == []
+
+
+def test_codes_in_headings_are_checked():
+    assert [f.rule for f in check("## Проверка SHOP-388\n\nТекст.\n")] == ["codes"]
+
+
+def test_codes_explained_after_link():
+    text = "Проверку из [SHOP-388](https://tracker.local/SHOP-388) (заказ пропускается) оставить.\n"
+    assert check(text) == []
+    assert check("Проверку из [SHOP-388|https://tracker.local/SHOP-388] (заказ пропускается) оставить.\n") == []
+
+
+def test_codes_inside_explained_branch_are_explained():
+    assert check("Ветка `SHOP-410-payment` (перенос стадии оплаты) ждёт ревью.\n") == []
 
 
 @pytest.mark.parametrize(
@@ -109,10 +143,15 @@ def test_codes_ignore_urls_and_plain_words():
 
 # 4. Самооценка из lint/self-praise.txt.
 
-@pytest.mark.parametrize("word,_", read_list("self-praise.txt"))
-def test_self_praise_each_entry_triggers(word, _):
-    findings = check(f"Получился {word} вариант.\n")
+@pytest.mark.parametrize("entry", read_list("self-praise.txt"), ids=lambda e: e.word)
+def test_self_praise_each_entry_triggers(entry):
+    findings = check(f"Получился {entry.word} вариант.\n")
     assert [f.rule for f in findings] == ["self-praise"]
+
+
+def test_self_praise_exceptions_from_list():
+    assert check("Минимальная сумма заказа 600 ₽, минимальный порог 100 ₽.\n") == []
+    assert "self-praise" in rules(check("Сделал минимальный вырез.\n"))
 
 
 def test_self_praise_matches_word_forms():
@@ -159,8 +198,22 @@ def test_length_list_items_are_separate_paragraphs():
 
 
 def test_length_abbreviations_do_not_split():
-    text = "Сумма, т.е. 600 ₽, записана. См. таблицу.\n"
+    from lint.document import split_sentences
+
+    assert len(split_sentences("Сумма, т.е. 600 ₽, записана. См. Таблицу.")) == 2
+    assert len(split_sentences("Вернули 100 руб. 200 руб. ждут, т.к. 2019 г. закрыт. Итого.")) == 2
+    text = " ".join(["слово"] * 33) + " т.е. 600 рублей записаны.\n"
+    assert [f.rule for f in check(text)] == ["length"]
+
+
+def test_length_quote_after_period_does_not_glue_sentences():
+    text = " ".join(["Строка закрыта «словом»."] * 3) + "\n"
     assert check(text) == []
+
+
+def test_length_wide_table_row_is_not_a_paragraph():
+    row = "| " + " | ".join(["a"] * 10) + " |\n"
+    assert check(row + "|" + "---|" * 10 + "\n" + row) == []
 
 
 def test_length_reports_line_of_sentence():
@@ -212,6 +265,18 @@ def test_task_form_requires_numbered_list():
     assert "нумерованного списка" in findings[0].message
 
 
+def test_task_form_subheading_keeps_items():
+    text = TASK.replace("## Что сделать\n", "## Что сделать\n\n### Бэкенд\n")
+    assert check(text, kind="task") == []
+    broken = text.replace("2. Таблица `refund_item`: добавить колонку `discount_share`.", "2. Добавить колонку.")
+    assert [f.rule for f in check(broken, kind="task")] == ["task-form"]
+
+
+def test_task_form_bold_label_sections():
+    text = "**Проблема**: скидка вычитается целиком.\n\n**Что сделать**:\n\n1. `RefundCalculator`: делить.\n\n**Как проверить**: тест.\n"
+    assert check(text, kind="task") == []
+
+
 def test_task_form_item_without_code_name():
     text = TASK.replace("2. Таблица `refund_item`: добавить колонку `discount_share`.", "2. Добавить колонку для доли скидки.")
     findings = check(text, kind="task")
@@ -238,8 +303,12 @@ def test_mr_form_passes():
     assert check(MR, kind="mr") == []
 
 
+def test_mr_form_accepts_how_verified():
+    assert check(MR.replace("## Проверки", "## Как проверено"), kind="mr") == []
+
+
 def test_mr_form_missing_section():
-    findings = check(MR.replace("## Проверки", "## Как проверял"), kind="mr")
+    findings = check(MR.replace("## Проверки", "## Тесты"), kind="mr")
     assert [f.rule for f in findings] == ["mr-form"]
     assert "Проверки" in findings[0].message
 
@@ -261,7 +330,7 @@ def test_fenced_code_and_html_are_not_checked():
 
 
 def test_quoted_word_is_a_mention():
-    assert check("Слово «спайк» и слово \"честно\" заменить.\n") == []
+    assert check("Слово «спайк», слово \"честно\" и слово “бэкофф” заменить.\n") == []
 
 
 def test_quoted_sentence_is_still_checked():
@@ -275,3 +344,34 @@ def test_table_cells_are_separate_sentences():
 
 def test_code_in_backticks_explained_after_closing_quote():
     assert "codes" not in rules(check("Ключ `NP-12` (префикс проекта и номер) в тексте.\n"))
+
+
+def test_fence_closes_only_with_matching_marker():
+    text = "````\nминимальный фикс\n```\nещё код\n````\n\nПосле спайка.\n"
+    findings = check(text)
+    assert [(f.rule, f.line) for f in findings] == [("jargon", 7)]
+    text = "```\nминимальный фикс\n~~~\n```\n\nТекст.\n"
+    assert check(text) == []
+
+
+def test_jira_code_block_is_not_prose():
+    text = "h2. Проблема\n\n{code:java}\nидемпотентный ключ SHOP-1\n{code}\n\n{noformat}\nfail-closed\n{noformat}\n"
+    assert check(text) == []
+
+
+def test_jira_heading_inside_fence_does_not_switch_markup():
+    text = TASK + "\n```\nh2. Пример\n```\n"
+    assert check(text, kind="task") == []
+
+
+def test_autolink_line_is_checked():
+    assert "self-praise" in rules(check("<https://tracker.local/x> там минимальный фикс\n"))
+
+
+def test_html_line_inside_paragraph_keeps_line_numbers():
+    text = "Первая строка.\n<br>\nСделал минимальный фикс.\n"
+    assert [f.line for f in check(text)] == [3, 3]
+
+
+def test_bom_does_not_hide_first_heading():
+    assert check("\ufeff## Не входит\n\nТекст.\n") != []

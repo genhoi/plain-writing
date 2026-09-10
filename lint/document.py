@@ -1,24 +1,29 @@
 """Разбор текста на заголовки, абзацы и предложения.
 
 Поддерживает две разметки: Markdown (`## Заголовок`, `1. пункт`, `` `имя` ``)
-и Jira (`h2. Заголовок`, `# пункт`, `{{имя}}`). Разметка считается Jira, если в
-тексте есть хотя бы один заголовок вида `h2.`.
+и Jira (`h2. Заголовок`, `# пункт`, `{{имя}}`). Разметка считается Jira, если вне
+блоков кода есть хотя бы один заголовок вида `h2.`.
 """
 
 import re
 from dataclasses import dataclass, field
 
 MD_HEADING = re.compile(r"^\s{0,3}(#{1,6})\s+(.+?)\s*#*\s*$")
-JIRA_HEADING = re.compile(r"^h[1-6]\.\s+(.+?)\s*$")
+JIRA_HEADING = re.compile(r"^h([1-6])\.\s+(.+?)\s*$")
 BOLD_LINE = re.compile(r"^\s*(?:\*\*(.+?)\*\*|\*(\S.*?\S)\*|__(.+?)__)\s*:?\s*$")
+BOLD_LABEL = re.compile(r"^\s*(?:\*\*(.+?)\*\*|__(.+?)__)\s*:\s+(\S.*)$")
+SETEXT_UNDERLINE = re.compile(r"^\s{0,3}(=+|-+)\s*$")
 BULLET_ITEM = re.compile(r"^\s*(?:[-*+•]|#+)\s+")
 NUMBERED_ITEM = re.compile(r"^\s*(?:\d+[.)]|#+)\s+")
 CODE_SPAN = re.compile(r"`[^`\n]+`|\{\{[^}\n]+\}\}")
 URL = re.compile(r"https?://\S+")
-FENCE = re.compile(r"^\s*(```|~~~)")
-HTML_LINE = re.compile(r"^\s*</?[a-zA-Z][^>]*>")
+MD_LINK = re.compile(r"\[([^\]\n]+)\]\([^)\n]*\)")
+JIRA_LINK = re.compile(r"\[([^\]|\n]+)\|[^\]\n]*\]")
+FENCE = re.compile(r"^\s{0,3}(`{3,}|~{3,})")
+JIRA_BLOCK = re.compile(r"^\s*\{(code|noformat)(?::[^}]*)?\}")
+HTML_LINE = re.compile(r"^\s*<[a-zA-Z/][^>]*>(?:.*>)?\s*$")
 TABLE_ROW = re.compile(r"^\s*\|")
-QUOTED = re.compile(r"«[^«»\n]{1,40}»|\"[^\"\n]{1,40}\"|„[^“”„\n]{1,40}[“”]")
+QUOTED = re.compile(r"«[^«»\n]{1,40}»|\"[^\"\n]{1,40}\"|„[^“”„\n]{1,40}[“”]|“[^“”\n]{1,40}”")
 
 
 @dataclass
@@ -28,6 +33,7 @@ class Paragraph:
     line: int
     lines: list[str]
     numbered: bool = False
+    table: bool = False
 
     @property
     def text(self) -> str:
@@ -36,10 +42,14 @@ class Paragraph:
 
 @dataclass
 class Section:
-    """Раздел от заголовка до следующего заголовка того же или более высокого уровня."""
+    """Раздел от заголовка до следующего заголовка того же или более высокого уровня.
+
+    Абзацы вложенных подразделов входят в раздел.
+    """
 
     title: str
     line: int
+    level: int = 0
     paragraphs: list[Paragraph] = field(default_factory=list)
 
 
@@ -73,23 +83,28 @@ def strip_urls(text: str) -> str:
     return URL.sub("X", text)
 
 
+def strip_links(text: str) -> str:
+    """Ссылки Markdown и Jira заменены на их видимый текст."""
+    return JIRA_LINK.sub(r"\1", MD_LINK.sub(r"\1", text))
+
+
 def strip_quoted(text: str) -> str:
     """Короткие слова в кавычках — упоминание, а не употребление: их правила о словах пропускают."""
     return QUOTED.sub("X", text)
 
 
-def heading_of(line: str, jira: bool) -> str | None:
-    """Текст заголовка, если строка им является, иначе None."""
+def heading_of(line: str, jira: bool) -> tuple[int, str] | None:
+    """Уровень и текст заголовка, если строка им является, иначе None."""
     m = JIRA_HEADING.match(line)
     if m:
-        return m.group(1)
+        return int(m.group(1)), m.group(2)
     if not jira:
         m = MD_HEADING.match(line)
         if m:
-            return m.group(2)
+            return len(m.group(1)), m.group(2)
     m = BOLD_LINE.match(line)
     if m:
-        return next(g for g in m.groups() if g)
+        return 9, next(g for g in m.groups() if g)
     return None
 
 
@@ -102,14 +117,17 @@ def _is_item(line: str, jira: bool) -> tuple[bool, bool]:
     return bool(BULLET_ITEM.match(line)), False
 
 
-_ABBREVIATIONS = re.compile(r"\b(т|т\.е|т\.д|т\.п|напр|см|стр|рис|табл|др|пр|e\.g|i\.e|etc|vs)\.", re.IGNORECASE)
-_SENTENCE_END = re.compile(r"(?<=[.!?])\s+(?=[^a-zа-яё\s])|(?<=;)\s+|(?<=[.!?])$|\s*\|\s*")
+_ABBREVIATIONS = re.compile(
+    r"\b(т\.е|т\.д|т\.п|т\.к|напр|см|стр|рис|табл|др|пр|руб|коп|тыс|млн|млрд|гг|г|ул|им|e\.g|i\.e|etc|vs|т)\.",
+    re.IGNORECASE,
+)
+_SENTENCE_END = re.compile(r"(?<=[.!?])[»\"”)]*\s+(?=[^a-zа-яё\s])|(?<=;)\s+|(?<=[.!?])[»\"”)]*$|\s*\|\s*")
 
 
 def split_sentences(text: str) -> list[str]:
     """Предложения абзаца. Точка после сокращения и перед строчной буквой границей не считается."""
     text = strip_code(text)
-    text = _ABBREVIATIONS.sub(lambda m: m.group(1).replace(".", "") + "·", text)
+    text = _ABBREVIATIONS.sub(lambda m: m.group(0).replace(".", "·"), text)
     parts = [p.strip() for p in _SENTENCE_END.split(text)]
     return [p for p in parts if p]
 
@@ -121,40 +139,92 @@ def count_words(sentence: str) -> int:
     return len(_WORD.findall(sentence))
 
 
+def _code_block_end(line: str, opener: str | None) -> tuple[bool, str | None]:
+    """Открывает или закрывает ли строка блок кода. Возвращает (граница, новый открывающий маркер)."""
+    m = FENCE.match(line)
+    if m:
+        marker = m.group(1)
+        if opener is None:
+            return True, marker
+        if marker[0] == opener[0] and len(marker) >= len(opener) and not line.strip()[len(marker):].strip():
+            return True, None
+        return False, opener
+    if JIRA_BLOCK.match(line):
+        return True, (None if opener == "{}" else "{}")
+    return False, opener
+
+
+def _prose_source(lines: list[str]) -> list[str | None]:
+    """Строки вне блоков кода; внутри блока — None."""
+    result: list[str | None] = []
+    opener: str | None = None
+    for line in lines:
+        boundary, opener = _code_block_end(line, opener)
+        if boundary:
+            result.append(None)
+            continue
+        result.append(None if opener is not None else line)
+    return result
+
+
 def parse(text: str) -> Document:
-    lines = text.splitlines()
-    jira = any(JIRA_HEADING.match(s) for s in lines)
+    lines = text.lstrip("\ufeff").splitlines()
+    prose = _prose_source(lines)
+    jira = any(s is not None and JIRA_HEADING.match(s) for s in prose)
     headings: list[tuple[int, str]] = []
     paragraphs: list[Paragraph] = []
-    sections: list[Section] = [Section("", 0)]
+    root = Section("", 0)
+    sections: list[Section] = [root]
+    open_sections: list[Section] = [root]
     current: Paragraph | None = None
-    in_fence = False
 
     def close() -> None:
         nonlocal current
         if current is not None:
             paragraphs.append(current)
-            sections[-1].paragraphs.append(current)
+            for section in open_sections:
+                section.paragraphs.append(current)
             current = None
 
+    def add_heading(number: int, level: int, title: str) -> None:
+        close()
+        headings.append((number, title))
+        section = Section(title, number, level)
+        sections.append(section)
+        while open_sections[-1].level >= level and len(open_sections) > 1:
+            open_sections.pop()
+        open_sections.append(section)
+
     for number, line in enumerate(lines, start=1):
-        if FENCE.match(line):
-            in_fence = not in_fence
+        line = prose[number - 1]
+        if line is None or HTML_LINE.match(line):
             close()
             continue
-        if in_fence or HTML_LINE.match(line):
-            continue
-        if not line.strip() or line.strip() in {"----", "---", "***"} or TABLE_ROW.match(line):
+        if not line.strip() or line.strip() in {"----", "***"}:
             close()
-            if TABLE_ROW.match(line) and not re.fullmatch(r"[\s|:-]+", line):
-                paragraphs.append(Paragraph(number, [line]))
-                sections[-1].paragraphs.append(paragraphs[-1])
             continue
-        title = heading_of(line, jira)
-        if title is not None:
+        if SETEXT_UNDERLINE.match(line):
+            if current is not None and len(current.lines) == 1 and not current.numbered and not current.table:
+                title = current.lines[0].strip()
+                current = None
+                add_heading(number - 1, 1 if line.strip().startswith("=") else 2, title)
+            else:
+                close()
+            continue
+        if TABLE_ROW.match(line):
             close()
-            headings.append((number, title))
-            sections.append(Section(title, number))
+            if not re.fullmatch(r"[\s|:-]+", line):
+                current = Paragraph(number, [line], table=True)
+                close()
+            continue
+        heading = heading_of(line, jira)
+        if heading is not None:
+            add_heading(number, *heading)
+            continue
+        m = BOLD_LABEL.match(line)
+        if m:
+            add_heading(number, 9, m.group(1) or m.group(2))
+            current = Paragraph(number, [m.group(3)])
             continue
         item, numbered = _is_item(line, jira)
         if item:

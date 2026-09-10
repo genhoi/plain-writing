@@ -1,7 +1,7 @@
 """Командная строка: `python -m lint [--kind task|mr|text] [файл ...]`.
 
 Без файлов читает stdin. Печатает `файл:строка: правило: замечание`.
-Код возврата 1, если замечания есть, иначе 0.
+Код возврата 1, если замечания есть, 2, если файл не прочитан, иначе 0.
 """
 
 import argparse
@@ -17,7 +17,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("files", nargs="*", help="файлы для проверки; без файлов читается stdin")
     args = parser.parse_args(argv)
 
-    sources = [(name, Path(name).read_text(encoding="utf-8")) for name in args.files] or [("<stdin>", sys.stdin.read())]
+    sources = []
+    for name in args.files:
+        try:
+            sources.append((name, Path(name).read_text(encoding="utf-8-sig")))
+        except OSError as error:
+            print(f"{name}: не удалось прочитать: {error.strerror}", file=sys.stderr)
+            return 2
+    if not sources:
+        sources.append(("<stdin>", sys.stdin.read().lstrip("\ufeff")))
     total = 0
     for name, text in sources:
         for finding in check(text, args.kind):
