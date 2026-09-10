@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/hero.svg" alt="An overgrown, unreadable page on the left; a figure with shears trims it; on the right the same page, short and airy, read comfortably" width="100%">
+  <img src="docs/assets/hero.png" alt="An overgrown, unreadable page on the left; a figure with shears trims it; on the right the same page, short and airy, read comfortably" width="100%">
 </p>
 
 # plain-writing
