@@ -1,6 +1,6 @@
 ---
 name: plain-writing
-description: Use before writing or editing any text that people will read without our chat — a Jira task, an MR description, a review comment, a message to a colleague, a report to the user («напиши задачу», «опиши MR», «ответь в ревью», «отпиши лиду»). Also when the user says the text is unclear, has too much AI filler or insider context («напиши нормально», «меньше слопа», «никто не в курсе нашего контекста»). Tool-agnostic: the same rules for Claude, Codex, Grok or any other model.
+description: Use before writing or editing any text that people will read without our chat — a task in a tracker, an MR description, a review comment, a message to a colleague, a report to the user («напиши задачу», «опиши MR», «ответь в ревью», «отпиши лиду»). Also when the user says the text is unclear, has too much AI filler or insider context («напиши нормально», «меньше слопа», «никто не в курсе нашего контекста»). Tool-agnostic: the same rules for Claude, Codex, Grok or any other model.
 ---
 
 # Тексты для людей

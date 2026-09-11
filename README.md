@@ -92,8 +92,7 @@ description.md:9: jargon: «fail-closed»: жаргон, замена: при с
 description.md:12: sections: раздел «Не входит»: убрать. Реальное ограничение идёт одним абзацем с причиной
 ```
 
-Markdown and Jira markup are both understood: `## Heading` and `h2. Heading`, `1. item` and
-`# item`, `` `name` `` and `{{name}}`.
+The text is checked, not its markup: Markdown is the default, and the Jira wiki markup (`h2.`, `#` items, `{{name}}`, `{code}`) is understood as well.
 
 | Rule | What it finds | Where the list lives |
 |---|---|---|
@@ -110,7 +109,7 @@ list of words that cancel the match when they follow it. That list is why "ми�
 not self-praise. An entry matches the word and up to three letters of ending, so `минимальн` finds
 "минимальный" and "минимальные". A word in quotes is a mention, not a use, and is skipped. A code is
 explained when it is followed by a bracket, a colon, a dash, "это" or "то есть". Code blocks, HTML
-lines and Jira `{code}` blocks are not checked.
+lines are not checked.
 
 **What the lint does not do.** It does not check whether a statement about the system is true, and
 it does not find made-up terms. Both stay with the person publishing the text; the rule is in
