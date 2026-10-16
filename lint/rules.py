@@ -5,13 +5,15 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .document import (
+    CODE_SPAN,
+    JIRA_LINK,
+    MD_LINK,
     Document,
     Paragraph,
     count_words,
     normalize_title,
     split_sentences,
     strip_code,
-    strip_links,
     strip_quoted,
     strip_urls,
 )
@@ -138,6 +140,16 @@ _BRANCH = re.compile(
 )
 
 
+# Строка-ссылка на задачи: «Closes NP-12», «Задача: NP-12, NP-13».
+_TRAILER = re.compile(
+    r"^\s*(?:[-*]\s+)?(?:closes|fixes|resolves|related to|relates to|refs?|see also|part of"
+    r"|задач[аи]|связан[а-яё]*(?: с)?|см\.)\s*:?\s+(.+)$",
+    re.IGNORECASE,
+)
+_PARENTHESES = re.compile(r"\(([^()\n]{1,80})\)")
+_REFERENCE_FILLER = re.compile(r"[\s,;]+|\b(?:и|and)\b")
+
+
 def _explained(text: str, end: int) -> bool:
     return bool(_EXPLANATION.match(text[end:]))
 
@@ -146,12 +158,46 @@ def _code_patterns() -> list[re.Pattern[str]]:
     return [re.compile(entry.word) for entry in read_list("codes.txt")]
 
 
+def _mask(pattern: re.Pattern[str], text: str, keep=lambda m: False) -> str:
+    """Совпадения заменены на «X» той же длины, чтобы смещения не сдвигались."""
+    return pattern.sub(lambda m: m.group(0) if keep(m) else "X" * len(m.group(0)), text)
+
+
+def _reference_spans(text: str, patterns: list[re.Pattern[str]]) -> list[tuple[int, int]]:
+    """Места, где коды стоят указателем: в скобках после утверждения или в строке «Closes NP-12».
+
+    Указатель — это коды через запятую и не больше двух слов-подписей: «(NP-12)»,
+    «(задача NP-12)», «(sms-gateway !730)». Предложение понятно и без него.
+    """
+    spans = []
+    candidates = [(m.start(1), m.group(1)) for m in _PARENTHESES.finditer(text)]
+    trailer = _TRAILER.match(text)
+    if trailer:
+        candidates.append((trailer.start(1), trailer.group(1)))
+    for start, inner in candidates:
+        rest = inner
+        found = False
+        for pattern in patterns:
+            rest, n = pattern.subn(" ", rest)
+            found = found or n > 0
+        if found and len(_REFERENCE_FILLER.sub(" ", rest).split()) <= 2:
+            spans.append((start, start + len(inner)))
+    return spans
+
+
 def check_codes(doc: Document) -> list[Finding]:
-    """Внутренние коды и ветки без расшифровки в том же абзаце."""
+    """Внутренние коды и ветки без расшифровки в том же абзаце.
+
+    Код, по которому можно перейти (ссылка), код-указатель (в скобках или в строке
+    «Closes NP-12») и код внутри имени файла или пути не считаются.
+    """
     findings = []
     patterns = _code_patterns()
     for unit in _text_units(doc):
-        text = strip_urls(strip_links(unit.text))
+        text = strip_urls(_mask(JIRA_LINK, _mask(MD_LINK, unit.text)))
+        references = _reference_spans(text, patterns)
+        # Код внутри пути или имени в обратных кавычках — часть имени, а не код: `docs/NP-12/plan.md`.
+        code_text = _mask(CODE_SPAN, text, keep=lambda m: "/" not in m.group(0))
         explained_spans: list[tuple[int, int]] = []
         found: list[tuple[int, str, str]] = []
         for m in _BRANCH.finditer(text):
@@ -162,7 +208,9 @@ def check_codes(doc: Document) -> list[Finding]:
                 found.append((m.start(), name, "ветка: читатель не знает, что в ней. Сказать, что это, или убрать"))
         explained_codes = set()
         for pattern in patterns:
-            for m in pattern.finditer(text):
+            for m in pattern.finditer(code_text):
+                if any(start <= m.start() and m.end() <= end for start, end in references):
+                    continue
                 inside_branch = any(start <= m.start() and m.end() <= end for start, end in explained_spans)
                 if inside_branch or _explained(text, m.end()):
                     explained_codes.add(m.group(0))
@@ -213,11 +261,36 @@ def _required_sections(doc: Document, required, rule: str, kind: str) -> list[Fi
     return findings
 
 
+# Что в «Как проверить» читается как код, а не как шаг на стенде: тесты, классы, методы.
+_TESTS_WORD = re.compile(r"(?<![\w-])(?:юнит|unit)(?![\w])|(?<!\w)тест[а-яё]{0,3}(?![\w-])", re.IGNORECASE)
+_CLASS_NAME = re.compile(r"[A-Z][a-z0-9]+(?:[A-Z][a-z0-9]*)+|::|\w\(\)")
+
+
+def _code_in_check(paragraph: Paragraph) -> str | None:
+    """Первое имя класса, метода или упоминание тестов в пункте «Как проверить»."""
+    for span in CODE_SPAN.finditer(paragraph.text):
+        if _CLASS_NAME.search(span.group(0)):
+            return span.group(0)
+    m = _TESTS_WORD.search(strip_quoted(strip_code(paragraph.text)))
+    return m.group(0) if m else None
+
+
 def check_task_form(doc: Document) -> list[Finding]:
-    """Форма задачи: разделы «Проблема», «Что сделать», «Как проверить»; в «Что сделать» нумерованные пункты с именем кода."""
+    """Форма задачи: разделы «Проблема», «Что сделать», «Как проверить».
+
+    В «Что сделать» нумерованные пункты с именем кода: их читает разработчик. В «Как проверить»
+    шаги для тестировщика, без классов, методов и тестов: тесты описываются в MR.
+    """
     findings = _required_sections(doc, TASK_SECTIONS, "task-form", "задачи")
     for section in doc.sections:
-        if not normalize_title(section.title).startswith("что сделать"):
+        title = normalize_title(section.title)
+        if title.startswith("как проверить"):
+            for paragraph in section.paragraphs:
+                name = _code_in_check(paragraph)
+                if name:
+                    findings.append(Finding(paragraph.line, "task-form", f"«{name}» в «Как проверить»: раздел читает тестировщик, нужны шаги на стенде и ожидаемый результат, тесты — в описание MR"))
+            continue
+        if not title.startswith("что сделать"):
             continue
         items = [p for p in section.paragraphs if p.numbered]
         if not items:

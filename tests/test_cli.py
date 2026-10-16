@@ -50,5 +50,5 @@ def test_missing_file_exits_two():
 
 def test_bom_file(tmp_path):
     path = tmp_path / "task.md"
-    path.write_text("\ufeff## Проблема\n\nТекст.\n\n## Что сделать\n\n1. `X`: y.\n\n## Как проверить\n\n- тест.\n", encoding="utf-8")
+    path.write_text("\ufeff## Проблема\n\nТекст.\n\n## Что сделать\n\n1. `X`: y.\n\n## Как проверить\n\n- вернуть заказ.\n", encoding="utf-8")
     assert run("--kind", "task", str(path)).returncode == 0

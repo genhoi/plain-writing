@@ -141,6 +141,51 @@ def test_codes_ignore_urls_and_plain_words():
     assert "codes" not in rules(check(text))
 
 
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Задача: [NP-12](https://tracker.local/NP-12).\n",
+        "Замеры есть в [MR !3544|https://git.local/mr/3544].\n",
+        "Дизайн в [!381](https://git.local/mr/381) обновлён.\n",
+    ],
+)
+def test_codes_link_is_not_a_code(text):
+    assert "codes" not in rules(check(text))
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Индекс будет искать заказы по хешу телефона (NP-12).\n",
+        "Выкатка одним окном со шлюзом (sms-gateway !730).\n",
+        "Ни заказа, ни чека нет (обращение SS-495406, ANLTS-504).\n",
+        "feat(NP-12): список сообщений по клиенту.\n",
+        "Closes NP-12\n",
+        "Related to NP-12, NP-13\n",
+        "Задача: NP-12.\n",
+    ],
+)
+def test_codes_reference_is_not_a_code(text):
+    assert "codes" not in rules(check(text))
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Проверка из SHOP-388 сохраняется (SHOP-388).\n",
+        "Проверка сохраняется (как договорились в SHOP-388 на прошлой неделе).\n",
+        "Closes NP-12, после него можно включать флаг.\n",
+    ],
+)
+def test_codes_reference_does_not_hide_code_in_prose(text):
+    assert "codes" in rules(check(text))
+
+
+def test_codes_inside_path_are_part_of_name():
+    assert check("Описание обновлено в `docs/features/NP-12/api.md`.\n") == []
+    assert "codes" in rules(check("Ключ `NP-12` в тексте.\n"))
+
+
 # 4. Самооценка из lint/self-praise.txt.
 
 @pytest.mark.parametrize("entry", read_list("self-praise.txt"), ids=lambda e: e.word)
@@ -234,7 +279,7 @@ TASK = """## Проблема
 
 ## Как проверить
 
-- Тест на три позиции по 1000 ₽.
+- Вернуть заказ из трёх позиций по 1000 ₽ со скидкой 300 ₽: к возврату 2700 ₽, по 900 ₽ за позицию.
 """
 
 TASK_JIRA = TASK.replace("## Проблема", "h2. Проблема").replace("## Что сделать", "h2. Что сделать").replace("## Как проверить", "h2. Как проверить").replace("1. `RefundCalculator::calculate()`", "# {{RefundCalculator::calculate()}}").replace("2. Таблица `refund_item`", "# Таблица {{refund_item}}")
@@ -273,7 +318,7 @@ def test_task_form_subheading_keeps_items():
 
 
 def test_task_form_bold_label_sections():
-    text = "**Проблема**: скидка вычитается целиком.\n\n**Что сделать**:\n\n1. `RefundCalculator`: делить.\n\n**Как проверить**: тест.\n"
+    text = "**Проблема**: скидка вычитается целиком.\n\n**Что сделать**:\n\n1. `RefundCalculator`: делить.\n\n**Как проверить**: вернуть заказ со скидкой.\n"
     assert check(text, kind="task") == []
 
 
@@ -281,6 +326,41 @@ def test_task_form_item_without_code_name():
     text = TASK.replace("2. Таблица `refund_item`: добавить колонку `discount_share`.", "2. Добавить колонку для доли скидки.")
     findings = check(text, kind="task")
     assert [(f.rule, f.line) for f in findings] == [("task-form", 8)]
+
+
+@pytest.mark.parametrize(
+    "step",
+    [
+        "- Тест на три позиции по 1000 ₽.",
+        "- Юнит-тесты на расчёт доли.",
+        "- `RefundCalculatorTest` проходит.",
+        "- `RefundCalculator` делит скидку пропорционально.",
+        "- `RefundCalculator::calculate()` возвращает 900 ₽.",
+        "- {{calculate()}} возвращает 900 ₽.",
+    ],
+)
+def test_task_form_check_section_is_for_tester(step):
+    text = TASK.replace("- Вернуть заказ из трёх позиций по 1000 ₽ со скидкой 300 ₽: к возврату 2700 ₽, по 900 ₽ за позицию.", step)
+    findings = check(text, kind="task")
+    assert [(f.rule, f.line) for f in findings] == [("task-form", 12)]
+    assert "тестировщик" in findings[0].message
+
+
+@pytest.mark.parametrize(
+    "step",
+    [
+        "- Включить флаг «Возврат по долям» в настройках магазина, вернуть заказ: к возврату 2700 ₽.",
+        "- Запросить `GET /v9/order/<sid>`: в ответе `refund_total` равен 2700.",
+        "- Протестировать возврат заказа со скидкой: к возврату 2700 ₽.",
+    ],
+)
+def test_task_form_check_section_allows_product_steps(step):
+    text = TASK.replace("- Вернуть заказ из трёх позиций по 1000 ₽ со скидкой 300 ₽: к возврату 2700 ₽, по 900 ₽ за позицию.", step)
+    assert check(text, kind="task") == []
+
+
+def test_task_form_check_section_tests_allowed_in_mr():
+    assert check(MR, kind="mr") == []
 
 
 # 7. Форма MR.
