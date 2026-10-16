@@ -1,6 +1,6 @@
 ---
 name: plain-writing
-description: "Use before writing or editing any text that people will read without our chat — a task in a tracker, an MR description, a review comment, a message to a colleague or for forwarding in a messenger, a reply to a tester, a README or a document for another team, a report to the user («напиши задачу», «опиши MR», «ответь в ревью», «отпиши лиду», «дай ответ для пересылки в тг», «напиши QA, как тестировать»). Also when the user says the text is unclear, has too much AI filler or insider context («напиши нормально», «меньше слопа», «вычитай», «никто не в курсе нашего контекста»). Tool-agnostic: the same rules for Claude, Codex, Grok or any other model."
+description: "Use before writing or editing any text that people will read without our chat — a task in a tracker, an MR description, a review comment, a message to a colleague or for forwarding in a messenger, a reply to a tester, a README or a document for another team («напиши задачу», «опиши MR», «ответь в ревью», «отпиши лиду», «дай ответ для пересылки в тг», «напиши QA, как тестировать»). Also when the user says the text is unclear, has too much AI filler or insider context («напиши нормально», «меньше слопа», «вычитай», «никто не в курсе нашего контекста»). Tool-agnostic: the same rules for Claude, Codex, Grok or any other model."
 ---
 
 # Тексты для людей
@@ -11,8 +11,8 @@ description: "Use before writing or editing any text that people will read witho
 я сам в новой сессии. Он не знает, какие ветки мы сравнивали, что решили на созвоне, что такое `NP-35`
 и почему мы вообще этим занялись. Текст обязан работать сам по себе.
 
-До первой строки решить, кто читает и что он сделает с текстом. Разработчик пойдёт в код, ему нужны
-имена классов и таблиц. Тестировщик пройдёт сценарий на стенде, ему нужны шаги и ожидаемый результат,
+До первой строки решить, кто читает и что он сделает с текстом. Разработчику нужно техническое
+описание: что меняется в поведении, в данных и в контрактах API. Тестировщик пройдёт сценарий на стенде, ему нужны шаги и ожидаемый результат,
 а классы мешают. Лиду или бизнесу нужно решение: зачем это и что даст. Коллеге в мессенджере нужен сам
 вопрос. Если читателей несколько, у каждого свой раздел.
 
@@ -75,7 +75,8 @@ description: "Use before writing or editing any text that people will read witho
 Первая строка — вывод или цель: что случилось, что нужно от читателя, зачем задача. Подробности после.
 
 - Задача: **Проблема** (что ломается и почему сейчас так, с примером) → **Что сделать** (нумерованные
-  пункты для разработчика, каждый называет класс, таблицу или метод) → **Как проверить** (для
+  пункты для разработчика: что должно измениться в поведении, данных или контракте API; имена классов
+  и методов только там, где без них не найти место, структура кода быстро меняется) → **Как проверить** (для
   тестировщика: что настроить, например какой флаг включить и где; шаги на стенде словами продукта; что
   должно получиться; без классов и юнит-тестов, тесты описываются в MR; если снаружи изменение не видно,
   какую часть продукта прогнать для проверки, что ничего не сломалось) → **Ограничение** (только

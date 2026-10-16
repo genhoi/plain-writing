@@ -10,11 +10,11 @@ The reader opens the text without our chat: a developer from another team, a tes
 later, me in a new session. They do not know which branches we compared, what we decided on a call,
 what `NP-35` is, or why we took this on at all. The text has to work on its own.
 
-Before the first line, decide who reads it and what they will do with it. A developer will go into
-the code and needs class and table names. A tester will walk through a scenario on the staging
-server and needs steps and the expected result; class names get in their way. A lead or the business
-needs a decision: why do this and what it gives. A colleague in a messenger needs the question
-itself. If there are several readers, each gets their own section.
+Before the first line, decide who reads it and what they will do with it. A developer needs a
+technical description: what changes in behaviour, in data and in API contracts. A tester will walk
+through a scenario on the staging server and needs steps and the expected result; class names get in
+their way. A lead or the business needs a decision: why do this and what it gives. A colleague in a
+messenger needs the question itself. If there are several readers, each gets their own section.
 
 The main thing before publishing: read it as a stranger and ask of every sentence "will a person
 who never saw the chat understand this?". If not, rewrite it or throw it out. How to do that for an
@@ -83,7 +83,8 @@ The first line is the conclusion or the goal: what happened, what is needed from
 task exists. Details come after.
 
 - Task: **Problem** (what breaks and why it is so now, with an example) → **What to do** (numbered
-  items for the developer, each naming a class, table or method) → **How to verify** (for the
+  items for the developer: what has to change in behaviour, data or an API contract; class and method
+  names only where the place cannot be found without them, the code structure changes fast) → **How to verify** (for the
   tester: what to set up, for example which flag to switch on and where; steps on the staging
   server in the product's words; what should happen; no class names and no unit tests, the tests are
   described in the MR; if the change is not visible from outside, which part of the product to run to

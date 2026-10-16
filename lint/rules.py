@@ -249,9 +249,6 @@ def check_length(doc: Document) -> list[Finding]:
     return findings
 
 
-_CODE_NAME = re.compile(r"`[^`]+`|\{\{[^}]+\}\}")
-
-
 def _required_sections(doc: Document, required, rule: str, kind: str) -> list[Finding]:
     findings = []
     present = [normalize_title(title) for _, title in doc.headings]
@@ -278,8 +275,8 @@ def _code_in_check(paragraph: Paragraph) -> str | None:
 def check_task_form(doc: Document) -> list[Finding]:
     """Форма задачи: разделы «Проблема», «Что сделать», «Как проверить».
 
-    В «Что сделать» нумерованные пункты с именем кода: их читает разработчик. В «Как проверить»
-    шаги для тестировщика, без классов, методов и тестов: тесты описываются в MR.
+    В «Что сделать» нумерованные пункты. В «Как проверить» шаги для тестировщика, без классов,
+    методов и тестов: тесты описываются в MR.
     """
     findings = _required_sections(doc, TASK_SECTIONS, "task-form", "задачи")
     for section in doc.sections:
@@ -295,9 +292,6 @@ def check_task_form(doc: Document) -> list[Finding]:
         items = [p for p in section.paragraphs if p.numbered]
         if not items:
             findings.append(Finding(section.line, "task-form", "в «Что сделать» нет нумерованного списка"))
-        for item in items:
-            if not _CODE_NAME.search(item.text):
-                findings.append(Finding(item.line, "task-form", "пункт не называет класс, таблицу или метод в обратных кавычках"))
     return findings
 
 

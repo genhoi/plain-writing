@@ -313,7 +313,7 @@ def test_task_form_requires_numbered_list():
 def test_task_form_subheading_keeps_items():
     text = TASK.replace("## Что сделать\n", "## Что сделать\n\n### Бэкенд\n")
     assert check(text, kind="task") == []
-    broken = text.replace("2. Таблица `refund_item`: добавить колонку `discount_share`.", "2. Добавить колонку.")
+    broken = text.replace("1. `RefundCalculator", "- `RefundCalculator").replace("2. Таблица", "- Таблица")
     assert [f.rule for f in check(broken, kind="task")] == ["task-form"]
 
 
@@ -322,10 +322,9 @@ def test_task_form_bold_label_sections():
     assert check(text, kind="task") == []
 
 
-def test_task_form_item_without_code_name():
-    text = TASK.replace("2. Таблица `refund_item`: добавить колонку `discount_share`.", "2. Добавить колонку для доли скидки.")
-    findings = check(text, kind="task")
-    assert [(f.rule, f.line) for f in findings] == [("task-form", 8)]
+def test_task_form_item_without_code_name_passes():
+    text = TASK.replace("2. Таблица `refund_item`: добавить колонку `discount_share`.", "2. Хранить долю скидки каждой позиции заказа.")
+    assert check(text, kind="task") == []
 
 
 @pytest.mark.parametrize(
