@@ -46,7 +46,9 @@ cd ~/src/plain-writing
 ```
 
 **Claude Code.** Symlinks `skill/` into `~/.claude/skills/plain-writing` and adds one line to
-`~/.claude/CLAUDE.md` if it is not there. `--copy` copies instead of linking.
+`~/.claude/CLAUDE.md` if it is not there. The line says to load the skill with the Skill tool rather
+than read the file: then Claude Code puts the rules back into context after compaction. `--copy`
+copies instead of linking.
 
 ```bash
 install/claude-code.sh
@@ -98,10 +100,10 @@ The text is checked, not its markup: Markdown is the default, and the Jira wiki 
 |---|---|---|
 | `sections` | Headings "Не входит", "Что осталось за бортом", "Что не сделано", "Out of scope" and the like | `lint/rules.py` |
 | `jargon` | Calques and jargon, each with a replacement | `lint/jargon.txt` |
-| `codes` | Tracker keys like `NP-12` (a project prefix and a number), MR numbers, branch names next to the word "ветка" or "branch", with no explanation in the same paragraph. Standards such as UTF-8 or SHA-256 are not codes | `lint/codes.txt` for codes, `lint/rules.py` for branches |
+| `codes` | Tracker keys like `NP-12` (a project prefix and a number), MR numbers, branch names next to the word "ветка" or "branch", with no explanation in the same paragraph. Not counted: standards such as UTF-8 or SHA-256; a code that is a link; a code in brackets after a statement ("(NP-12)", "(задача NP-12)") or in a "Closes NP-12" line; a code inside a path in backticks | `lint/codes.txt` for codes, `lint/rules.py` for branches |
 | `self-praise` | "минимальный", "аккуратно", "честно", "очень полезно" and the like | `lint/self-praise.txt` |
 | `length` | A sentence over 35 words, a paragraph over 8 sentences | `lint/rules.py` |
-| `task-form` | With `--kind task`: sections "Проблема", "Что сделать", "Как проверить"; a numbered list under "Что сделать" where every item names a class, table or method in backticks | `lint/rules.py` |
+| `task-form` | With `--kind task`: sections "Проблема", "Что сделать", "Как проверить"; a numbered list under "Что сделать" where every item names a class, table or method in backticks; no classes, methods or tests under "Как проверить": a tester reads it | `lint/rules.py` |
 | `mr-form` | With `--kind mr`: sections "Зачем", "Что изменилось", "Проверки" (or "Как проверено") | `lint/rules.py` |
 
 The word lists are one entry per line: the word, then a replacement after a tab, then an optional
